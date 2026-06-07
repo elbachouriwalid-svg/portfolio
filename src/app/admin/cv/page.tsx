@@ -1,161 +1,34 @@
 "use client";
 import { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { Upload, FileText, Trash2, CheckCircle, Download, AlertCircle } from "lucide-react";
+import { FileText, Download, CheckCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
-
-interface FileEntry {
-  name: string;
-  url: string;
-  updatedAt?: string;
-}
+import { FileUpload } from "@/components/ui/FileUpload";
 
 export default function AdminCVPage() {
-  const [cvFile, setCvFile] = useState<File | null>(null);
-  const [cardFile, setCardFile] = useState<File | null>(null);
-  const [currentCv, setCurrentCv] = useState<FileEntry | null>(null);
-  const [currentCard, setCurrentCard] = useState<FileEntry | null>(null);
-  const [uploading, setUploading] = useState<"cv" | "card" | null>(null);
-  const [status, setStatus] = useState<Record<string, "success" | "error" | "idle">>({ cv: "idle", card: "idle" });
+  const [cvUrl, setCvUrl] = useState<string | null>(null);
+  const [cardUrl, setCardUrl] = useState<string | null>(null);
+  const [cvSaved, setCvSaved] = useState(false);
+  const [cardSaved, setCardSaved] = useState(false);
 
-  useEffect(() => { fetchCurrentFiles(); }, []);
-
-  const fetchCurrentFiles = async () => {
-    const supabase = createClient();
-    const { data: cvData } = await supabase.storage.from("cv").list("", { limit: 10 });
-    if (cvData) {
-      const cv = cvData.find((f) => f.name === "cv.pdf");
-      const card = cvData.find((f) => f.name === "business-card.pdf");
-      if (cv) {
-        const { data: { publicUrl } } = supabase.storage.from("cv").getPublicUrl("cv.pdf");
-        setCurrentCv({ name: "cv.pdf", url: publicUrl, updatedAt: cv.updated_at ?? undefined });
+  useEffect(() => {
+    const sb = createClient();
+    // Check if CV exists
+    sb.storage.from("cv").list("", { search: "cv.pdf" }).then(({ data: files }) => {
+      if (files && files.length > 0) {
+        const { data } = sb.storage.from("cv").getPublicUrl("cv.pdf");
+        setCvUrl(data.publicUrl);
       }
-      if (card) {
-        const { data: { publicUrl } } = supabase.storage.from("cv").getPublicUrl("business-card.pdf");
-        setCurrentCard({ name: "business-card.pdf", url: publicUrl, updatedAt: card.updated_at ?? undefined });
+    });
+    // Check if business card exists
+    sb.storage.from("cv").list("", { search: "business-card.pdf" }).then(({ data: files }) => {
+      if (files && files.length > 0) {
+        const { data } = sb.storage.from("cv").getPublicUrl("business-card.pdf");
+        setCardUrl(data.publicUrl);
       }
-    }
-  };
-
-  const handleUpload = async (type: "cv" | "card") => {
-    const file = type === "cv" ? cvFile : cardFile;
-    if (!file) return;
-    setUploading(type);
-    const supabase = createClient();
-    const fileName = type === "cv" ? "cv.pdf" : "business-card.pdf";
-    const { error } = await supabase.storage.from("cv").upload(fileName, file, { upsert: true, contentType: "application/pdf" });
-    if (!error) {
-      setStatus((s) => ({ ...s, [type]: "success" }));
-      await fetchCurrentFiles();
-      if (type === "cv") setCvFile(null);
-      else setCardFile(null);
-      setTimeout(() => setStatus((s) => ({ ...s, [type]: "idle" })), 3000);
-    } else {
-      setStatus((s) => ({ ...s, [type]: "error" }));
-      setTimeout(() => setStatus((s) => ({ ...s, [type]: "idle" })), 3000);
-    }
-    setUploading(null);
-  };
-
-  const FileUploadCard = ({
-    type, label, subtitle, file, current, onFileSelect,
-  }: {
-    type: "cv" | "card";
-    label: string;
-    subtitle: string;
-    file: File | null;
-    current: FileEntry | null;
-    onFileSelect: (f: File) => void;
-  }) => {
-    const inputId = `${type}-upload`;
-    const isUploading = uploading === type;
-    const st = status[type];
-
-    return (
-      <div className="p-6 rounded-2xl" style={{ background: "rgba(13,21,37,0.8)", border: "1px solid rgba(0,119,255,0.15)" }}>
-        <div className="flex items-center gap-3 mb-5">
-          <FileText size={18} style={{ color: "#0077FF" }} />
-          <div>
-            <h2 className="font-bold" style={{ color: "white", fontFamily: "var(--font-manrope)" }}>{label}</h2>
-            <p className="text-xs" style={{ color: "#475569" }}>{subtitle}</p>
-          </div>
-        </div>
-
-        {/* Current file */}
-        {current && (
-          <div className="flex items-center gap-3 p-3 rounded-xl mb-4"
-            style={{ background: "rgba(0,119,255,0.06)", border: "1px solid rgba(0,119,255,0.15)" }}>
-            <CheckCircle size={15} style={{ color: "#22C55E", flexShrink: 0 }} />
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium" style={{ color: "#94A3B8" }}>Fichier actuel</div>
-              <div className="text-xs truncate" style={{ color: "#475569" }}>{current.name}</div>
-            </div>
-            <a href={current.url} target="_blank" rel="noopener noreferrer"
-              className="w-7 h-7 flex items-center justify-center rounded-lg"
-              style={{ background: "rgba(0,119,255,0.1)", color: "#0077FF" }}>
-              <Download size={12} />
-            </a>
-          </div>
-        )}
-
-        {/* New file selected */}
-        {file ? (
-          <div className="flex items-center gap-4 p-4 rounded-xl mb-4"
-            style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
-            <CheckCircle size={18} style={{ color: "#22C55E" }} />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate" style={{ color: "white" }}>{file.name}</div>
-              <div className="text-xs" style={{ color: "#475569" }}>{(file.size / 1024 / 1024).toFixed(2)} MB</div>
-            </div>
-            <button onClick={() => { if (type === "cv") setCvFile(null); else setCardFile(null); }}
-              className="w-7 h-7 flex items-center justify-center rounded-lg"
-              style={{ background: "rgba(239,68,68,0.1)", color: "#EF4444" }}>
-              <Trash2 size={12} />
-            </button>
-          </div>
-        ) : (
-          <div
-            className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-300 hover:border-blue-500 mb-4"
-            style={{ borderColor: "rgba(0,119,255,0.3)" }}
-            onClick={() => document.getElementById(inputId)?.click()}
-          >
-            <Upload size={28} className="mx-auto mb-3" style={{ color: "#334155" }} />
-            <p className="text-sm mb-1" style={{ color: "#64748B" }}>Cliquer pour sélectionner le PDF</p>
-            <p className="text-xs" style={{ color: "#334155" }}>Format PDF uniquement — Max 10 MB</p>
-          </div>
-        )}
-
-        <input id={inputId} type="file" accept=".pdf" className="hidden"
-          onChange={(e) => e.target.files?.[0] && onFileSelect(e.target.files[0])} />
-
-        <div className="flex gap-2">
-          {file && (
-            <motion.button
-              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-              onClick={() => handleUpload(type)}
-              disabled={isUploading}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60"
-              style={{
-                background: st === "success" ? "rgba(34,197,94,0.2)" : st === "error" ? "rgba(239,68,68,0.2)" : "linear-gradient(135deg, #0077FF, #00C3FF)",
-                border: st === "success" ? "1px solid rgba(34,197,94,0.4)" : st === "error" ? "1px solid rgba(239,68,68,0.4)" : "none",
-                color: st === "success" ? "#22C55E" : st === "error" ? "#EF4444" : "white",
-              }}
-            >
-              {st === "success" ? <CheckCircle size={14} /> : st === "error" ? <AlertCircle size={14} /> : <Upload size={14} />}
-              {isUploading ? "Envoi en cours..." : st === "success" ? "Envoyé !" : st === "error" ? "Erreur" : "Envoyer sur le serveur"}
-            </motion.button>
-          )}
-          <button onClick={() => document.getElementById(inputId)?.click()}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium"
-            style={{ background: "rgba(0,119,255,0.08)", border: "1px solid rgba(0,119,255,0.2)", color: "#00C3FF" }}>
-            <Upload size={14} />
-            {file ? "Changer" : "Sélectionner"}
-          </button>
-        </div>
-      </div>
-    );
-  };
+    });
+  }, []);
 
   return (
     <AdminLayout>
@@ -169,16 +42,92 @@ export default function AdminCVPage() {
         </div>
 
         <div className="space-y-6">
-          <FileUploadCard
-            type="cv" label="Curriculum Vitae" subtitle="PDF téléchargeable sur la page d'accueil"
-            file={cvFile} current={currentCv}
-            onFileSelect={setCvFile}
-          />
-          <FileUploadCard
-            type="card" label="Carte de Visite" subtitle="PDF téléchargeable depuis la carte Contact"
-            file={cardFile} current={currentCard}
-            onFileSelect={setCardFile}
-          />
+          {/* CV */}
+          <div className="p-6 rounded-2xl" style={{ background: "rgba(13,21,37,0.8)", border: "1px solid rgba(0,119,255,0.15)" }}>
+            <div className="flex items-center gap-3 mb-5">
+              <FileText size={18} style={{ color: "#0077FF" }} />
+              <div>
+                <h2 className="font-bold" style={{ color: "white", fontFamily: "var(--font-manrope)" }}>Curriculum Vitae</h2>
+                <p className="text-xs" style={{ color: "#475569" }}>PDF téléchargeable sur la page d&apos;accueil · Max 10 MB</p>
+              </div>
+              {cvUrl && <CheckCircle size={16} style={{ color: "#22C55E", marginLeft: "auto" }} />}
+            </div>
+
+            <FileUpload
+              bucket="cv"
+              storagePath="cv.pdf"
+              accept=".pdf,application/pdf"
+              maxSizeMB={10}
+              currentUrl={cvUrl}
+              label="Cliquer ou glisser le CV (PDF)"
+              hint="Format PDF uniquement · Max 10 MB"
+              accentColor="#0077FF"
+              onUploadComplete={(url) => {
+                setCvUrl(url);
+                setCvSaved(true);
+                setTimeout(() => setCvSaved(false), 4000);
+              }}
+            />
+
+            {cvUrl && (
+              <div className="flex items-center gap-3 mt-4 pt-4" style={{ borderTop: "1px solid rgba(0,119,255,0.08)" }}>
+                <a href={cvUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all hover:scale-105"
+                  style={{ background: "rgba(0,119,255,0.1)", border: "1px solid rgba(0,119,255,0.2)", color: "#00C3FF" }}>
+                  <Download size={12} /> Voir le CV actuel
+                </a>
+                {cvSaved && <span className="text-xs" style={{ color: "#22C55E" }}>✓ Mis à jour sur le site</span>}
+              </div>
+            )}
+          </div>
+
+          {/* Business Card */}
+          <div className="p-6 rounded-2xl" style={{ background: "rgba(13,21,37,0.8)", border: "1px solid rgba(255,107,0,0.15)" }}>
+            <div className="flex items-center gap-3 mb-5">
+              <FileText size={18} style={{ color: "#FF6B00" }} />
+              <div>
+                <h2 className="font-bold" style={{ color: "white", fontFamily: "var(--font-manrope)" }}>Carte de Visite</h2>
+                <p className="text-xs" style={{ color: "#475569" }}>PDF téléchargeable depuis la carte Contact · Max 5 MB</p>
+              </div>
+              {cardUrl && <CheckCircle size={16} style={{ color: "#22C55E", marginLeft: "auto" }} />}
+            </div>
+
+            <FileUpload
+              bucket="cv"
+              storagePath="business-card.pdf"
+              accept=".pdf,application/pdf"
+              maxSizeMB={5}
+              currentUrl={cardUrl}
+              label="Cliquer ou glisser la carte de visite (PDF)"
+              hint="Format PDF uniquement · Max 5 MB"
+              accentColor="#FF6B00"
+              onUploadComplete={(url) => {
+                setCardUrl(url);
+                setCardSaved(true);
+                setTimeout(() => setCardSaved(false), 4000);
+              }}
+            />
+
+            {cardUrl && (
+              <div className="flex items-center gap-3 mt-4 pt-4" style={{ borderTop: "1px solid rgba(255,107,0,0.08)" }}>
+                <a href={cardUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all hover:scale-105"
+                  style={{ background: "rgba(255,107,0,0.1)", border: "1px solid rgba(255,107,0,0.2)", color: "#FF8C33" }}>
+                  <Download size={12} /> Voir la carte actuelle
+                </a>
+                {cardSaved && <span className="text-xs" style={{ color: "#22C55E" }}>✓ Mis à jour sur le site</span>}
+              </div>
+            )}
+          </div>
+
+          {/* Info */}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
+            className="p-4 rounded-xl" style={{ background: "rgba(0,119,255,0.04)", border: "1px solid rgba(0,119,255,0.12)" }}>
+            <p className="text-xs leading-relaxed" style={{ color: "#475569" }}>
+              <strong style={{ color: "#00C3FF" }}>Comment ça fonctionne :</strong> Après l&apos;upload, les visiteurs qui cliquent
+              &quot;Télécharger CV&quot; ou &quot;Carte de visite PDF&quot; sur la page d&apos;accueil reçoivent automatiquement ces fichiers.
+            </p>
+          </motion.div>
         </div>
       </div>
     </AdminLayout>

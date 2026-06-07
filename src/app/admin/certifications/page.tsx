@@ -2,8 +2,9 @@
 import { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { motion } from "framer-motion";
-import { Plus, Edit2, Trash2, Save, X, Award, Upload } from "lucide-react";
+import { Plus, Edit2, Trash2, Save, X, Award } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { FileUpload } from "@/components/ui/FileUpload";
 
 interface Certification {
   id: string;
@@ -31,7 +32,6 @@ export default function AdminCertificationsPage() {
   const [form, setForm] = useState<Omit<Certification, "id">>(BLANK);
   const [saving, setSaving] = useState(false);
   const [skillInput, setSkillInput] = useState("");
-  const [uploading, setUploading] = useState(false);
 
   useEffect(() => { fetchData(); }, []);
 
@@ -66,19 +66,6 @@ export default function AdminCertificationsPage() {
     setCerts((prev) => prev.filter((c) => c.id !== id));
   };
 
-  const handleImageUpload = async (file: File) => {
-    setUploading(true);
-    const supabase = createClient();
-    const ext = file.name.split(".").pop();
-    const path = `${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("certifications").upload(path, file, { upsert: true });
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage.from("certifications").getPublicUrl(path);
-      setForm((f) => ({ ...f, image_url: publicUrl }));
-    }
-    setUploading(false);
-  };
-
   const addSkill = () => {
     const s = skillInput.trim();
     if (s && !form.skills.includes(s)) {
@@ -90,7 +77,6 @@ export default function AdminCertificationsPage() {
   return (
     <AdminLayout>
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <div className="label-tag mb-2" style={{ color: "#FF6B00" }}>◆ GESTION</div>
@@ -98,7 +84,7 @@ export default function AdminCertificationsPage() {
           </div>
           <button
             onClick={() => { setShowForm(!showForm); setEditId(null); setForm(BLANK); setSkillInput(""); }}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 hover:scale-105"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all hover:scale-105"
             style={{ background: "linear-gradient(135deg, #FF6B00, #FF8C33)", color: "white" }}
           >
             <Plus size={16} /> Nouvelle certification
@@ -107,14 +93,11 @@ export default function AdminCertificationsPage() {
 
         {/* Form */}
         {showForm && (
-          <motion.div
-            initial={{ opacity: 0, y: -15 }}
-            animate={{ opacity: 1, y: 0 }}
+          <motion.div initial={{ opacity: 0, y: -15 }} animate={{ opacity: 1, y: 0 }}
             className="p-6 rounded-2xl mb-6"
-            style={{ background: "rgba(13,21,37,0.9)", border: "1px solid rgba(255,107,0,0.2)" }}
-          >
+            style={{ background: "rgba(13,21,37,0.9)", border: "1px solid rgba(255,107,0,0.2)" }}>
             <h2 className="font-bold text-lg mb-5" style={{ color: "white", fontFamily: "var(--font-manrope)" }}>
-              {editId ? "Modifier la certification" : "Nouvelle certification"}
+              {editId ? "Modifier" : "Nouvelle certification"}
             </h2>
 
             <div className="grid sm:grid-cols-2 gap-4 mb-4">
@@ -125,7 +108,7 @@ export default function AdminCertificationsPage() {
                   placeholder="Ex: Formation TIA Portal S7-1200/1500" />
               </div>
               <div className="sm:col-span-2">
-                <label className="label-tag block mb-1.5" style={{ color: "#475569" }}>TITRE (ENGLISH)</label>
+                <label className="label-tag block mb-1.5" style={{ color: "#475569" }}>TITLE (ENGLISH)</label>
                 <input className="w-full px-4 py-2.5 rounded-xl text-sm outline-none" style={INPUT}
                   value={form.title_en} onChange={(e) => setForm({ ...form, title_en: e.target.value })} />
               </div>
@@ -145,29 +128,18 @@ export default function AdminCertificationsPage() {
 
             {/* Image upload */}
             <div className="mb-4">
-              <label className="label-tag block mb-1.5" style={{ color: "#475569" }}>IMAGE DU CERTIFICAT</label>
-              {form.image_url ? (
-                <div className="flex items-center gap-3 p-3 rounded-xl mb-2"
-                  style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
-                  <div className="flex-1 text-sm truncate" style={{ color: "#22C55E" }}>Image chargée ✓</div>
-                  <button onClick={() => setForm({ ...form, image_url: "" })} style={{ color: "#EF4444" }}>
-                    <X size={14} />
-                  </button>
-                </div>
-              ) : (
-                <div
-                  className="border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all hover:opacity-80"
-                  style={{ borderColor: "rgba(255,107,0,0.3)" }}
-                  onClick={() => document.getElementById("cert-img-upload")?.click()}
-                >
-                  <Upload size={22} className="mx-auto mb-2" style={{ color: "#475569" }} />
-                  <p className="text-xs" style={{ color: "#64748B" }}>
-                    {uploading ? "Upload en cours..." : "Cliquer pour uploader (JPG, PNG)"}
-                  </p>
-                </div>
-              )}
-              <input id="cert-img-upload" type="file" accept="image/*" className="hidden"
-                onChange={(e) => e.target.files?.[0] && handleImageUpload(e.target.files[0])} />
+              <label className="label-tag block mb-2" style={{ color: "#475569" }}>IMAGE DU CERTIFICAT</label>
+              <FileUpload
+                bucket="certifications"
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                maxSizeMB={5}
+                currentUrl={form.image_url || null}
+                label="Cliquer ou glisser l'image du certificat"
+                hint="JPG, PNG, WebP · Max 5 MB"
+                accentColor="#FF6B00"
+                previewType="image"
+                onUploadComplete={(url) => setForm(f => ({ ...f, image_url: url }))}
+              />
             </div>
 
             {/* Skills */}
@@ -177,19 +149,16 @@ export default function AdminCertificationsPage() {
                 <input className="flex-1 px-4 py-2 rounded-xl text-sm outline-none" style={INPUT}
                   value={skillInput} onChange={(e) => setSkillInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSkill())}
-                  placeholder="Taper une compétence et appuyer sur Entrée..." />
+                  placeholder="Ajouter une compétence..." />
                 <button onClick={addSkill} className="px-4 py-2 rounded-xl text-sm font-medium"
-                  style={{ background: "rgba(255,107,0,0.15)", border: "1px solid rgba(255,107,0,0.3)", color: "#FF8C33" }}>
-                  Ajouter
-                </button>
+                  style={{ background: "rgba(255,107,0,0.15)", border: "1px solid rgba(255,107,0,0.3)", color: "#FF8C33" }}>Ajouter</button>
               </div>
-              <div className="flex flex-wrap gap-2 min-h-[2rem]">
+              <div className="flex flex-wrap gap-2">
                 {form.skills.map((s) => (
                   <span key={s} className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium"
                     style={{ background: "rgba(255,107,0,0.1)", border: "1px solid rgba(255,107,0,0.2)", color: "#FF8C33" }}>
                     {s}
-                    <button onClick={() => setForm({ ...form, skills: form.skills.filter((x) => x !== s) })}
-                      style={{ color: "#EF4444" }}><X size={10} /></button>
+                    <button onClick={() => setForm({ ...form, skills: form.skills.filter((x) => x !== s) })} style={{ color: "#EF4444" }}><X size={10} /></button>
                   </span>
                 ))}
               </div>
@@ -223,7 +192,7 @@ export default function AdminCertificationsPage() {
             {certs.map((c) => (
               <div key={c.id} className="flex items-center gap-4 p-4 rounded-xl"
                 style={{ background: "rgba(13,21,37,0.7)", border: "1px solid rgba(255,107,0,0.12)" }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
                   style={{ background: "rgba(255,107,0,0.1)", border: "1px solid rgba(255,107,0,0.2)" }}>
                   {c.image_url
                     ? <img src={c.image_url} alt="" className="w-full h-full object-cover" />
@@ -235,10 +204,8 @@ export default function AdminCertificationsPage() {
                   {c.skills?.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
                       {c.skills.slice(0, 4).map((s) => (
-                        <span key={s} className="px-2 py-0.5 rounded-full text-xs"
-                          style={{ background: "rgba(255,107,0,0.08)", color: "#FF8C33" }}>{s}</span>
+                        <span key={s} className="px-2 py-0.5 rounded-full text-xs" style={{ background: "rgba(255,107,0,0.08)", color: "#FF8C33" }}>{s}</span>
                       ))}
-                      {c.skills.length > 4 && <span className="text-xs" style={{ color: "#334155" }}>+{c.skills.length - 4}</span>}
                     </div>
                   )}
                 </div>
